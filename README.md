@@ -76,6 +76,65 @@ docker image list
 
 ![image](screenshots/Screenshot_2.png)
 
-на скриншоте видно, что образ `mynginx.raw` почему-то весит так же как образ `mynginx.clean` - 269MB. Хотя по сути, `mynginx.clean` должен весить меньше, потому что в нём после установки пакетов выполняется очистка кэша APT и временных файлов.
+На скриншоте видно, что образ `mynginx.raw` почему-то весит так же как образ `mynginx.clean` - 269MB. Хотя по сути, `mynginx.clean` должен весить меньше, потому что в нём после установки пакетов выполняется очистка кэша APT и временных файлов. Возможно дело в том, что очищается кэш только одного слоя а не всех.
 
 ## Уменьшение количества слоев
+1. Создаю файл `Dockerfile.few` со следующим содержимым:
+```dockerfile
+# create from ubuntu image
+FROM ubuntu:latest
+
+# update system
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y nginx && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# copy site
+COPY site /var/www/html
+
+# expose port 80
+EXPOSE 80
+
+# run nginx
+CMD ["nginx", "-g", "daemon off;"]
+```
+2. Создаю образ с именем `mynginx:few` и проверяю его размер:
+```bash
+docker image build -t mynginx:few -f Dockerfile.few .
+docker image list
+```
+
+![image](screenshots/Screenshot_3.png)
+
+На скриншоте видно, что образ `mynginx.few` весит меньше остальных - 186MB. Это обусловлено тем, что образ оптимизирован в один слой (одна команда `RUN` вместо 3 отдельных). Это позволяет избежать охранения временных файлов в предыдущих слоях.
+
+## Минимальный базовый образ
+1. Создаю файл `Dockerfile.alpine` со следующим содержимым:
+```dockerfile
+# create from alpine image
+FROM alpine:latest
+
+# update system
+RUN apk update && apk upgrade
+
+# install nginx
+RUN apk add nginx
+
+# copy site
+COPY site /var/www/html
+
+# expose port 80
+EXPOSE 80
+
+# run nginx
+CMD ["nginx", "-g", "daemon off;"]
+```
+2. Собираю образ с именем `mynginx:alpine` и проверяю его размер:
+```bash
+docker image build -t mynginx:alpine -f Dockerfile.alpine .
+docker image list
+```
+
+![image](screenshots/Screenshot_4.png)
+
+На скриншоте видно, что образ `mynginx.alpine` весит сильно меньше остальных - 19.5MB. Это обусловлено тем, что он основан на `alpine:latest` — сверхминималистичный дистрибутив Linux, специально созданный для контейнеров.
